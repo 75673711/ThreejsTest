@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Song MV</title>
+    <style>
+        html, body { margin: 0; padding: 0; overflow: hidden; }
+    </style>
+</head>
+<body>
+<script src="../lib/three.js"></script>
+<script src="../lib/WHDFirstPersonControls.js"></script>
+<script src="../lib/Enum.js"></script>
+<script src="Dusk.js"></script>
+
+<script src="../lib/curves/NURBSCurve.js"></script>
+<script src="../lib/curves/NURBSSurface.js"></script>
+<script src="../lib/curves/NURBSUtils.js"></script>
+<script>
+
+    var clock, controls, box;
+
+    var scene = new THREE.Scene();
+    //scene.fog = new THREE.Fog(0x434343, 1, 1000);
+    scene.add( new THREE.AmbientLight( 0xffffff, 1 ) );
+
+    var aspect = window.innerWidth / window.innerHeight;
+    var camera = new THREE.PerspectiveCamera(75, aspect, 0.1, 200000);
+
+    var renderer = new THREE.WebGLRenderer(  { antialias: true, alpha: true }  );
+    //renderer.setClearColor( scene.fog.color );
+    renderer.shadowMap.enabled = true;
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    scene.add(new THREE.AxisHelper(500));
+
+    initControls();
+
+    var map = new THREE.TextureLoader().load( '../images/leaf.png' );
+    map.anisotropy = 16;
+    var leaf = WHDCreateLeaf(map);
+    scene.add(leaf);
+
+    var render = function () {
+        controls.update(clock.getDelta());
+        renderer.render( scene, camera );
+        requestAnimationFrame( render );
+    };
+
+    render();
+
+    //点组成面
+    function createPlane(vertices, xlength, ylength, xseg, yseg) {
+        var curve = new THREE.CubicBezierCurve(
+                vertices[0],
+                vertices[1],
+                vertices[2],
+                vertices[3]
+        );
+
+        var geometry = new THREE.PlaneGeometry(xlength, ylength, xseg, yseg);
+
+        for (var y = 0; y <= yseg; y++) {
+            for (var x = 0; x <= xseg; x++) {
+                geometry.vertices[y*(xseg+1)+x].z = curve.getPoint(y/yseg).y;
+            }
+         }
+        geometry.center();
+
+        var map = new THREE.TextureLoader().load( '../images/leaf.png' );
+        //map.wrapS = map.wrapT = THREE.RepeatWrapping;
+        map.anisotropy = 16;
+
+        var material = new THREE.MeshPhongMaterial( {
+            specular: 0x030303,
+            map: map,
+            side: THREE.DoubleSide,
+            alphaTest: 0.5
+        } );
+        material.side = THREE.DoubleSide;
+
+        var mesh = new THREE.Mesh( geometry, material );
+        mesh.rotation.y = Math.PI*3/2;
+        mesh.lookAt ( new THREE.Vector3(0, 1, 0) );
+        scene.add( mesh );
+
+        controls.leftMouseDownTask = function () {
+            mesh.rotation.y += 0.01;
+        }
+    }
+
+    //样条曲线
+    function createNurbsLine() {
+        var nurbsControlPoints = [];
+        var nurbsKnots = [];
+        var nurbsDegree = 3;
+
+        for ( var i = 0; i <= nurbsDegree; i ++ ) {
+            nurbsKnots.push( 0 );
+        }
+
+        nurbsControlPoints = [
+            new THREE.Vector4(0,5,0,1),
+            new THREE.Vector4(10,2,0,1),
+            new THREE.Vector4(20,4,0,1),
+            new THREE.Vector4(30,7,0,1),
+            new THREE.Vector4(40,11,0,1),
+            new THREE.Vector4(50,17,0,1),
+            new THREE.Vector4(60,25,0,1),
+            new THREE.Vector4(70,35,0,1),
+        ];
+
+        for ( var i = 0, j = 8; i < j; i ++ ) {
+
+//            nurbsControlPoints.push(
+//                    new THREE.Vector4(
+//                            i*10,
+//                            i+i*i/3,
+//                            0,
+//                            1 // weight of control point: higher means stronger attraction
+//                    )
+//            );
+
+            var knot = ( i + 1 ) / ( j - nurbsDegree );
+            nurbsKnots.push(1);
+        }
+
+        //nurbsDegree (阶数) 这个数字通常是 1、2、3 或 5，Rhino 的直线和多重直线的阶数是 1，圆的阶数是 2，大部分自由造型曲线的阶数是 3 或 5
+        //
+        //nurbsControlPoints (控制点) 控制点是一个点的列表，控制点的最小数目是 阶数 + 1 。[Vector4, Vector4, ...]
+        //每个控制点都带有一个数字 ( 权值 )，除了少数的特例以外，权值大多是正数。
+        //当一条曲线所有的控制点有相同的权值时 ( 通常是 1 )，称为"非有理" ( Non-Rational ) 曲线，
+        //否则称为"有理" ( Rational ) 曲线。NURBS 的 R 代表有理，意味着一条 NURBS 曲线有可能是有理的。
+        //在实际情况中，大部分的 NURBS 曲线是非有理的, 但有些 NURBS 曲线永远是有理的，圆和椭圆是最明显的例子。
+        //
+        // nurbsKnots (节点 节点 ( Knot ) 是一个 ( 阶数 + N - 1 ) 的数字列表 N 代表控制点数目。 [0,1,2,...]
+        //节点列表上的数字必须符合几个条件，确定条件是否符合的标准方式是在列表上往下时，数字必需维持不变或变大，而且数字重复的次数不可以比阶数大。
+        //
+        //https://www.rhino3d.com/nurbs
+        var nurbsCurve = new THREE.NURBSCurve(nurbsDegree, nurbsKnots, nurbsControlPoints);
+
+        var nurbsGeometry = new THREE.Geometry();
+        nurbsGeometry.vertices = nurbsCurve.getPoints(200);
+        var nurbsMaterial = new THREE.LineBasicMaterial( { linewidth: 10, color: 0x333333, transparent: true } );
+
+        var nurbsLine = new THREE.Line( nurbsGeometry, nurbsMaterial );
+        scene.add(nurbsLine)
+    }
+    
+    function createCubicBezierLine() {
+        var curve = new THREE.CubicBezierCurve(
+                new THREE.Vector3( 0, 5, 0 ),
+                new THREE.Vector3( 10, 2, 0 ),
+                new THREE.Vector3( 20, 6, 0 ),
+                new THREE.Vector3( 25, 10, 0 ),
+                new THREE.Vector3( 30, 15, 0 )
+        );
+
+        var path = new THREE.Path( curve.getPoints( 50 ) );
+
+        var geometry = path.createPointsGeometry( 50 );
+        var material = new THREE.LineBasicMaterial( { color : 0xff0000 } );
+
+// Create the final Object3d to add to the scene
+        var curveObject = new THREE.Line( geometry, material );
+        scene.add(curveObject);
+    }
+
+    //闭合曲线
+    function createCurvedLine() {
+        var curve = new THREE.ClosedSplineCurve3( [
+            new THREE.Vector3( 0, 5, 0 ),
+            new THREE.Vector3( 10, 2, 0 ),
+            new THREE.Vector3( 20, 6, 0 ),
+            new THREE.Vector3( 25, 10, 0 ),
+            new THREE.Vector3( 30, 15, 0 )
+        ] );
+
+        var geometry = new THREE.Geometry();
+        geometry.vertices = curve.getPoints( 50 );
+
+        var material = new THREE.LineBasicMaterial( { color : 0xff0000 } );
+        scene.add(new THREE.Line(geometry, material));
+    }
+
+    //过控制点曲线
+    function createCatmullRomCurvedLine() {
+        var curve = new THREE.CatmullRomCurve3( [
+            new THREE.Vector3( 0, 5, 0 ),
+            new THREE.Vector3( 10, 2, 0 ),
+            new THREE.Vector3( 20, 6, 0 ),
+            new THREE.Vector3( 25, 10, 0 ),
+            new THREE.Vector3( 30, 15, 0 )
+        ] );
+
+        var geometry = new THREE.Geometry();
+        geometry.vertices = curve.getPoints( 100 );
+
+        var material = new THREE.LineBasicMaterial( { color : 0xff0000 } );
+        scene.add(new THREE.Line(geometry, material));
+    }
+
+    function initSimple() {
+        var func = function (u, v) {
+            var point = new THREE.Vector3();
+            point.x = 100 + Math.cos(u);
+            point.y = 100 + Math.sin(v);
+            return point;
+        };
+        var geometry = new THREE.ParametricGeometry(func, 10, 10);
+        var material = new THREE.MeshNormalMaterial();
+        var param = new THREE.Mesh(geometry, material);
+        scene.add(param);
+    }
+
+    function initnurb() {
+        var group = new THREE.Group();
+        group.position.y = 50;
+        scene.add( group );
+
+        // NURBS curve
+
+        var nurbsControlPoints = [];
+        var nurbsKnots = [];
+        var nurbsDegree = 3;
+
+        for ( var i = 0; i <= nurbsDegree; i ++ ) {
+
+            nurbsKnots.push( 0 );
+
+        }
+
+        for ( var i = 0, j = 20; i < j; i ++ ) {
+
+            nurbsControlPoints.push(
+                    new THREE.Vector4(
+                            Math.random() * 400 - 200,
+                            Math.random() * 400,
+                            Math.random() * 400 - 200,
+                            1 // weight of control point: higher means stronger attraction
+                    )
+            );
+
+            var knot = ( i + 1 ) / ( j - nurbsDegree );
+            nurbsKnots.push( THREE.Math.clamp( knot, 0, 1 ) );
+
+        }
+
+        var nurbsCurve = new THREE.NURBSCurve(nurbsDegree, nurbsKnots, nurbsControlPoints);
+
+        var nurbsGeometry = new THREE.Geometry();
+        nurbsGeometry.vertices = nurbsCurve.getPoints(200);
+        var nurbsMaterial = new THREE.LineBasicMaterial( { linewidth: 10, color: 0x333333, transparent: true } );
+
+        var nurbsLine = new THREE.Line( nurbsGeometry, nurbsMaterial );
+        nurbsLine.position.set( 200, -100, 0 );
+        group.add( nurbsLine );
+
+        var nurbsControlPointsGeometry = new THREE.Geometry();
+        nurbsControlPointsGeometry.vertices = nurbsCurve.controlPoints;
+        var nurbsControlPointsMaterial = new THREE.LineBasicMaterial( { linewidth: 2, color: 0x333333, opacity: 0.25, transparent: true } );
+        var nurbsControlPointsLine = new THREE.Line( nurbsControlPointsGeometry, nurbsControlPointsMaterial );
+        nurbsControlPointsLine.position.copy( nurbsLine.position );
+        group.add( nurbsControlPointsLine );
+
+        // NURBS surface
+
+        var nsControlPoints = [
+            [
+                new THREE.Vector4 ( -200, -200, 100, 1 ),
+                new THREE.Vector4 ( -200, -100, -200, 1 ),
+                new THREE.Vector4 ( -200, 100, 250, 1 ),
+                new THREE.Vector4 ( -200, 200, -100, 1 )
+            ],
+            [
+                new THREE.Vector4 ( 0, -200, 0, 1 ),
+                new THREE.Vector4 ( 0, -100, -100, 5 ),
+                new THREE.Vector4 ( 0, 100, 150, 5 ),
+                new THREE.Vector4 ( 0, 200, 0, 1 )
+            ],
+            [
+                new THREE.Vector4 ( 200, -200, -100, 1 ),
+                new THREE.Vector4 ( 200, -100, 200, 1 ),
+                new THREE.Vector4 ( 200, 100, -250, 1 ),
+                new THREE.Vector4 ( 200, 200, 100, 1 )
+            ]
+        ];
+        var degree1 = 2;
+        var degree2 = 3;
+        var knots1 = [0, 0, 0, 1, 1, 1];
+        var knots2 = [0, 0, 0, 0, 1, 1, 1, 1];
+        var nurbsSurface = new THREE.NURBSSurface(degree1, degree2, knots1, knots2, nsControlPoints);
+
+        var map = new THREE.TextureLoader().load( '../images/textures/UV_Grid_Sm.jpg' );
+        map.wrapS = map.wrapT = THREE.RepeatWrapping;
+        map.anisotropy = 16;
+
+        var getSurfacePoint = function(u, v) {
+            return nurbsSurface.getPoint(u, v);
+        };
+
+        var geometry = new THREE.ParametricGeometry( getSurfacePoint, 100, 100 );
+        var material = new THREE.MeshLambertMaterial( { map: map, side: THREE.DoubleSide } );
+        var object = new THREE.Mesh( geometry, material );
+        object.position.set( - 200, 100, 0 );
+        object.scale.multiplyScalar( 1 );
+        group.add( object );
+    }
+
+    /*********************************************************************/
+
+    function createFloor() {
+        var geometry = new THREE.PlaneGeometry(1000, 1000, 20, 20);
+
+        var material = new THREE.MeshPhongMaterial();
+        material.color.setHex(0xff9900);
+        material.side = THREE.DoubleSide;
+
+        var floor = new THREE.Mesh(geometry, material);
+        floor.rotation.x = -90*Math.PI/180;
+        floor.receiveShadow = true;
+        scene.add(floor);
+
+        var helper = new THREE.AxisHelper(500);
+        scene.add(helper);
+    }
+
+    function initControls() {
+        clock = new THREE.Clock();
+
+        controls = new THREE.WHDFirstPersonControls(camera);
+        controls.lookSpeed = 0.5;
+        controls.movementSpeed = 100;
+        controls.noFly = false;
+        controls.lookVertical = true;
+        controls.constrainVertical = true;
+        controls.verticalMin = 1.5;
+        controls.verticalMax = 2.0;
+
+        controls.lon = 270;
+        controls.lat = 90;
+        camera.position.set( 0, 0, 100 );
+    }
+
+</script>
+</body>
+</html>

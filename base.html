@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Song MV</title>
+    <style>
+        html, body { margin: 0; padding: 0; overflow: hidden; }
+    </style>
+</head>
+<body>
+<script src="../lib/three.js"></script>
+<script src="../lib/WHDFirstPersonControls.js"></script>
+<script src="../lib/Enum.js"></script>
+<script>
+
+    var clock, controls, box;
+
+    var scene = new THREE.Scene();
+    scene.fog = new THREE.Fog(0x434343, 1, 1000);
+    scene.add( new THREE.AmbientLight( 0xffffff, 1 ) );
+
+    var aspect = window.innerWidth / window.innerHeight;
+    var camera = new THREE.PerspectiveCamera(75, aspect, 0.1, 200000);
+
+    var renderer = new THREE.WebGLRenderer(  { antialias: true, alpha: true }  );
+    renderer.setClearColor( scene.fog.color );
+    renderer.shadowMap.enabled = true;
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    initControls();
+
+    createFloor();
+
+    var render = function () {
+        controls.update(clock.getDelta());
+        renderer.render( scene, camera );
+        requestAnimationFrame( render );
+    };
+
+    render();
+
+    /*********************************************************************/
+
+    function createFloor() {
+        var geometry = new THREE.PlaneGeometry(1000, 1000, 20, 20);
+
+        var material = new THREE.MeshPhongMaterial();
+        material.color.setHex(0xff9900);
+        material.side = THREE.DoubleSide;
+
+        var floor = new THREE.Mesh(geometry, material);
+        floor.rotation.x = -90*Math.PI/180;
+        floor.receiveShadow = true;
+        scene.add(floor);
+
+        var helper = new THREE.AxisHelper(500);
+        scene.add(helper);
+    }
+
+    function initControls() {
+        clock = new THREE.Clock();
+
+        controls = new THREE.WHDFirstPersonControls(camera);
+        controls.lookSpeed = 0.5;
+        controls.movementSpeed = 500;
+        controls.noFly = false;
+        controls.lookVertical = true;
+        controls.constrainVertical = true;
+        controls.verticalMin = 1.5;
+        controls.verticalMax = 2.0;
+
+        controls.lon = 270;
+        controls.lat = 90;
+        camera.position.set( 0, 0, 300 );
+    }
+
+</script>
+</body>
+</html>

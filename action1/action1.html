@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>three.js webgl - STL</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+    <style>
+        body {
+            font-family: Monospace;
+            background-color: #000000;
+            margin: 0px;
+            overflow: hidden;
+        }
+
+        #info {
+            color: #fff;
+            position: absolute;
+            top: 10px;
+            width: 100%;
+            text-align: center;
+            z-index: 100;
+            display:block;
+
+        }
+
+        a { color: skyblue }
+        .button { background:#999; color:#eee; padding:0.2em 0.5em; cursor:pointer }
+        .highlight { background:orange; color:#fff; }
+
+        span {
+            display: inline-block;
+            width: 60px;
+            float: left;
+            text-align: center;
+        }
+
+    </style>
+</head>
+<body>
+
+<script src="../lib/three.js"></script>
+<script src="../lib/STLLoader.js"></script>
+<script src="../lib/Detector.js"></script>
+<script src="../lib/WHDFirstPersonControls.js"></script>
+<script src="../lib/Enum.js"></script>
+
+<script src="../lib/charsetencoder.min.js"></script>
+<script src="../lib/ammo.js"></script>
+<script src="../lib/TGALoader.js"></script>
+<script src="../lib/MMDLoader.js"></script>
+<script src="../lib/CCDIKSolver.js"></script>
+<script src="../lib/MMDPhysics.js"></script>
+
+<script>
+
+    var textureLoader = new THREE.TextureLoader();
+
+    var mesh, controls;
+    var helper;
+
+    var mouseX = 0, mouseY = 0;
+
+    var windowHalfX = window.innerWidth / 2;
+    var windowHalfY = window.innerHeight / 2;
+
+    var clock = new THREE.Clock();
+
+    var aspect = window.innerWidth / window.innerHeight;
+    var camera = new THREE.PerspectiveCamera(75, aspect, 0.1, 200000);
+
+    var scene = new THREE.Scene();
+    scene.fog = new THREE.Fog( 0xc0cccc, 5000, 100000000 );
+    scene.add(new THREE.AmbientLight(0xefac09, 0.2));
+
+    var renderer = new THREE.WebGLRenderer( { alpha: true, antialias: true } );
+    renderer.setClearColor( scene.fog.color );
+    renderer.setPixelRatio( window.devicePixelRatio );
+    renderer.setSize( window.innerWidth, window.innerHeight );
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMapType = THREE.PCFShadowMap;
+    renderer.gammaInput = true;
+    renderer.gammaOutput = true;
+    document.body.appendChild( renderer.domElement );
+
+    //initModel();
+    initControls();
+    //initAxis(scene);
+
+    initGrassland();
+    initSun();
+    initSkyBox();
+    //initBridgeCube(scene);
+
+    //initBox(scene);
+
+    animate();
+
+    //////////////////////////////////////////////////
+
+    // load skybox
+
+    function initSkyBox() {
+        var cubeMap = new THREE.CubeTexture( [] );
+        cubeMap.format = THREE.RGBFormat;
+
+        var imageLoader = new THREE.ImageLoader();
+        imageLoader.load( '../images/textures/skyboxsun25degtest.png', function ( image ) {
+
+            var getSide = function ( x, y ) {
+
+                var size = 1024;
+
+                var canvas = document.createElement( 'canvas' );
+                canvas.width = size;
+                canvas.height = size;
+
+                var context = canvas.getContext( '2d' );
+                context.drawImage( image, - x * size, - y * size );
+
+                return canvas;
+
+            };
+
+            cubeMap.images[ 0 ] = getSide( 2, 1 ); // px
+            cubeMap.images[ 1 ] = getSide( 0, 1 ); // nx
+            cubeMap.images[ 2 ] = getSide( 1, 0 ); // py
+            cubeMap.images[ 3 ] = getSide( 1, 2 ); // ny
+            cubeMap.images[ 4 ] = getSide( 1, 1 ); // pz
+            cubeMap.images[ 5 ] = getSide( 3, 1 ); // nz
+            cubeMap.needsUpdate = true;
+        } );
+
+        var cubeShader = THREE.ShaderLib[ 'cube' ];
+        cubeShader.uniforms[ 'tCube' ].value = cubeMap;
+
+        var material = new THREE.ShaderMaterial( {
+                    fragmentShader: cubeShader.fragmentShader,
+                    vertexShader: cubeShader.vertexShader,
+                    uniforms: cubeShader.uniforms,
+                    depthWrite: false,
+                    side: THREE.BackSide
+                } );
+        var mesh = new THREE.Mesh( new THREE.BoxGeometry( 100000, 100000, 100000 ), material );
+        scene.add( mesh );
+    }
+
+    ////////////////////////////////////////////////////////////////////
+
+    function initGrassland() {
+        var groundTexture = textureLoader.load( "../images/grasslight-big.jpg" );
+        groundTexture.wrapS = groundTexture.wrapT = THREE.RepeatWrapping;
+        groundTexture.repeat.set( 250, 250 );
+        groundTexture.anisotropy = 16;
+
+        var groundMaterial = new THREE.MeshPhongMaterial( { color: 0xffffff, specular: 0x111111, map: groundTexture } );
+
+        //20000
+        var mesh = new THREE.Mesh( new THREE.PlaneBufferGeometry( 20000, 20000 ), groundMaterial );
+        mesh.position.y = 0;
+        mesh.rotation.x = - Math.PI / 2;
+        mesh.receiveShadow = true;
+        scene.add( mesh );
+
+        return mesh;
+    }
+
+    function initSun() {
+        var dirLight = new THREE.DirectionalLight( 0xffffff, 1 );  //0.05
+        dirLight.color.setHex( 0xff0000 );
+        dirLight.castShadow = true;
+        dirLight.shadowDarkness = 1;
+        dirLight.shadowMapWidth = 10000;
+        dirLight.shadowMapHeight = 10000;
+        dirLight.position.set(-1000, 1500, -1000);
+        dirLight.shadowCameraNear = 500;
+        dirLight.shadowCameraFar = 2500;
+        dirLight.shadowCameraLeft = -1000;
+        dirLight.shadowCameraRight = 1000;
+        dirLight.shadowCameraTop = 1000;
+        dirLight.shadowCameraBottom = -1000;
+        dirLight.shadowCascade = true;
+        scene.add( dirLight );
+
+
+        // lens flares
+
+        var textureFlare0 = textureLoader.load( "../images/textures/lensflare/lensflare0.png" );
+        var textureFlare2 = textureLoader.load( "../images/textures/lensflare/lensflare2.png" );
+        var textureFlare3 = textureLoader.load( "../images/textures/lensflare/lensflare3.png" );
+
+        //addLight( 0.55, 0.9, 0.5, -900, 300, -900, textureFlare0, textureFlare2, textureFlare3);
+    }
+
+    function addLight( h, s, l, x, y, z, textureFlare0, textureFlare2, textureFlare3) {
+
+        var light = new THREE.PointLight( 0xffffff, 1.5, 2000 );
+        light.color.setHSL( h, s, l );
+        light.position.set( x, y, z );
+
+        scene.add( light );
+
+        var flareColor = new THREE.Color( 0xffffff );
+        flareColor.setHSL( h, s, l + 0.5 );
+
+        var lensFlare = new THREE.LensFlare( textureFlare0, 700, 0.0, THREE.AdditiveBlending, flareColor );
+
+        lensFlare.add( textureFlare2, 512, 0.0, THREE.AdditiveBlending );
+        lensFlare.add( textureFlare2, 512, 0.0, THREE.AdditiveBlending );
+        lensFlare.add( textureFlare2, 512, 0.0, THREE.AdditiveBlending );
+
+        lensFlare.add( textureFlare3, 60, 0.6, THREE.AdditiveBlending );
+        lensFlare.add( textureFlare3, 70, 0.7, THREE.AdditiveBlending );
+        lensFlare.add( textureFlare3, 120, 0.9, THREE.AdditiveBlending );
+        lensFlare.add( textureFlare3, 70, 1.0, THREE.AdditiveBlending );
+
+        lensFlare.customUpdateCallback = lensFlareUpdateCallback;
+        lensFlare.position.copy( light.position );
+
+        scene.add( lensFlare );
+    }
+
+    function lensFlareUpdateCallback( object ) {
+
+        var f, fl = object.lensFlares.length;
+        var flare;
+        var vecX = -object.positionScreen.x * 2;
+        var vecY = -object.positionScreen.y * 2;
+
+
+        for( f = 0; f < fl; f++ ) {
+
+            flare = object.lensFlares[ f ];
+
+            flare.x = object.positionScreen.x + vecX * flare.distance;
+            flare.y = object.positionScreen.y + vecY * flare.distance;
+
+            flare.rotation = 0;
+
+        }
+
+        object.lensFlares[ 2 ].y += 0.025;
+        object.lensFlares[ 3 ].rotation = object.positionScreen.x * 0.5 + THREE.Math.degToRad( 45 );
+
+    }
+
+    /////////////////////////////////////////////////////////////////////////
+
+    function initModel() {
+        var onProgress = function ( xhr ) {
+            if ( xhr.lengthComputable ) {
+                var percentComplete = xhr.loaded / xhr.total * 100;
+            }
+        };
+
+        var onError = function ( xhr ) {
+        };
+
+        var modelFile = '../images/mmd/miku/miku_v2.pmd';
+        var vmdFiles = [ '../images/mmd/vmd/wavefile_v2.vmd' ];
+
+        helper = new THREE.MMDHelper( renderer );
+
+        var loader = new THREE.MMDLoader();
+        loader.setDefaultTexturePath( '../images/mmd/default/' );
+
+        loader.load( modelFile, vmdFiles, function ( object ) {
+
+            mesh = object;
+            mesh.position.z = 10;
+            mesh.position.x = 10;
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+
+            helper.add( mesh );
+            helper.setAnimation( mesh );
+            helper.setPhysics( mesh );
+            helper.unifyAnimationDuration( { afterglow: 2.0 } );
+            scene.add( mesh );
+
+        }, onProgress, onError );
+    }
+
+    function initControls() {
+        controls = new THREE.WHDFirstPersonControls(camera);
+        controls.lookSpeed = 0.5;
+        controls.movementSpeed = 50;
+        controls.noFly = false;
+        controls.lookVertical = true;
+        controls.constrainVertical = true;
+        controls.verticalMin = 1.5;
+        controls.verticalMax = 2.0;
+
+        controls.lon = 270;
+        controls.lat = 90;
+        camera.position.set( 0, 20, 50 );
+
+        controls.leftClickTask = function () {
+            if ( !mesh ) {
+                initModel();
+            }
+        }
+    }
+
+    function animate() {
+        requestAnimationFrame( animate );
+        render();
+    }
+
+    function render() {
+        if ( mesh ) {
+            var temp = clock.getDelta();
+            controls.update( temp );
+            //helper.animate( temp );
+            helper.render( scene, camera );
+        } else {
+            renderer.clear();
+            var temp = clock.getDelta();
+            controls.update( temp );
+            renderer.render( scene, camera );
+        }
+    }
+
+</script>
+</body>
+</html>

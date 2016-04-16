@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Song MV</title>
+    <style>
+        html, body { margin: 0; padding: 0; overflow: hidden; }
+    </style>
+</head>
+<body>
+<script src="../lib/three.min.js"></script>
+<script src="../lib/WHDFirstPersonControls.js"></script>
+<script src="../lib/Enum.js"></script>
+<script src="Dusk.js"></script>
+
+<script src="../lib/Cloth.js"></script>
+
+<script>
+
+    var clock, controls, box;
+    var helper, mesh;
+    var textureLoader = new THREE.TextureLoader();
+
+    var scene = new THREE.Scene();
+    scene.fog = new THREE.Fog( 0xc0cccc, 5000, 10000 );
+    //scene.fog.color.setHSL( 0.51, 0.4, 0.01 );
+    scene.add(new THREE.AmbientLight(0xffdefc, 0.3));
+
+    var aspect = window.innerWidth / window.innerHeight;
+    var camera = new THREE.PerspectiveCamera(75, aspect, 0.1, 200000);
+
+    var renderer = new THREE.WebGLRenderer( { antialias: true, alpha: true } );
+    renderer.setClearColor( scene.fog.color );
+    renderer.setPixelRatio( window.devicePixelRatio );
+    renderer.setSize( window.innerWidth, window.innerHeight );
+    renderer.shadowMap.enabled = true;
+    renderer.gammaInput = true;
+    renderer.gammaOutput = true;
+    document.body.appendChild( renderer.domElement );
+
+    initControls();
+
+    //createFloor();
+    initGrassland();
+    initSun();
+
+    //initBox(scene);
+
+    var map = new THREE.TextureLoader().load( '../images/leaf.png' );
+    var leaf = WHDCreateLeaf(map);
+    leaf.position.y = 200;
+    leaf.scale.set(1, 1, 1 );
+    scene.add(leaf);
+
+    var render = function () {
+        var temp = clock.getDelta();
+        controls.update( temp );
+        renderer.render( scene, camera );
+
+        requestAnimationFrame( render );
+    };
+
+    render();
+
+    function initGrassland() {
+        var groundTexture = textureLoader.load( "../images/grasslight-big.jpg" );
+        groundTexture.wrapS = groundTexture.wrapT = THREE.RepeatWrapping;
+        groundTexture.repeat.set( 25, 25 );
+        groundTexture.anisotropy = 16;
+
+        var groundMaterial = new THREE.MeshPhongMaterial( { color: 0xffffff, specular: 0x111111, map: groundTexture } );
+
+        var mesh = new THREE.Mesh( new THREE.PlaneBufferGeometry( 20000, 20000 ), groundMaterial );
+        mesh.position.y = - 5;
+        mesh.rotation.x = - Math.PI / 2;
+        mesh.receiveShadow = true;
+        scene.add( mesh );
+    }
+
+    function initSun() {
+        var dirLight = new THREE.DirectionalLight( 0xffffff, 1.75 );  //0.05
+        dirLight.position.set( 0, -1, 0 ).normalize();  //0 -1 0
+
+        dirLight.castShadow = true;
+        dirLight.shadowDarkness = 1;
+        dirLight.shadowMapWidth = 2048;
+        dirLight.shadowMapHeight = 2048;
+        dirLight.position.set(0, 15, -38);
+        dirLight.shadowCameraFar = 2500;
+        // DirectionalLight only; not necessary for PointLight
+        dirLight.shadowCameraLeft = -1000;
+        dirLight.shadowCameraRight = 1000;
+        dirLight.shadowCameraTop = 1000;
+        dirLight.shadowCameraBottom = -1000;
+
+        scene.add( dirLight );
+
+        dirLight.color.setHSL( 0.1, 0.7, 0.5 );
+
+        // lens flares
+
+        var textureFlare0 = textureLoader.load( "../images/textures/lensflare/lensflare0.png" );
+        var textureFlare2 = textureLoader.load( "../images/textures/lensflare/lensflare2.png" );
+        var textureFlare3 = textureLoader.load( "../images/textures/lensflare/lensflare3.png" );
+
+        addLight( 0.55, 0.9, 0.5, 0, 2500, -5000, textureFlare0, textureFlare2, textureFlare3);
+    }
+
+    function addLight( h, s, l, x, y, z, textureFlare0, textureFlare2, textureFlare3) {
+
+        var light = new THREE.PointLight( 0xffffff, 1.5, 2000 );
+        light.color.setHSL( h, s, l );
+        light.position.set( x, y, z );
+
+        scene.add( light );
+
+        var flareColor = new THREE.Color( 0xffffff );
+        flareColor.setHSL( h, s, l + 0.5 );
+
+        var lensFlare = new THREE.LensFlare( textureFlare0, 700, 0.0, THREE.AdditiveBlending, flareColor );
+
+        lensFlare.add( textureFlare2, 512, 0.0, THREE.AdditiveBlending );
+        lensFlare.add( textureFlare2, 512, 0.0, THREE.AdditiveBlending );
+        lensFlare.add( textureFlare2, 512, 0.0, THREE.AdditiveBlending );
+
+        lensFlare.add( textureFlare3, 60, 0.6, THREE.AdditiveBlending );
+        lensFlare.add( textureFlare3, 70, 0.7, THREE.AdditiveBlending );
+        lensFlare.add( textureFlare3, 120, 0.9, THREE.AdditiveBlending );
+        lensFlare.add( textureFlare3, 70, 1.0, THREE.AdditiveBlending );
+
+        lensFlare.customUpdateCallback = lensFlareUpdateCallback;
+        lensFlare.position.copy( light.position );
+
+        scene.add( lensFlare );
+    }
+
+    function lensFlareUpdateCallback( object ) {
+
+        var f, fl = object.lensFlares.length;
+        var flare;
+        var vecX = -object.positionScreen.x * 2;
+        var vecY = -object.positionScreen.y * 2;
+
+
+        for( f = 0; f < fl; f++ ) {
+
+            flare = object.lensFlares[ f ];
+
+            flare.x = object.positionScreen.x + vecX * flare.distance;
+            flare.y = object.positionScreen.y + vecY * flare.distance;
+
+            flare.rotation = 0;
+
+        }
+
+        object.lensFlares[ 2 ].y += 0.025;
+        object.lensFlares[ 3 ].rotation = object.positionScreen.x * 0.5 + THREE.Math.degToRad( 45 );
+
+    }
+
+    /*************************************************************/
+
+
+    function createFloor() {
+        var geometry = new THREE.PlaneGeometry(1000, 1000, 20, 20);
+
+        var material = new THREE.MeshPhongMaterial();
+        material.color.setHex(0x9999ff);
+        material.side = THREE.DoubleSide;
+
+        var floor = new THREE.Mesh(geometry, material);
+        floor.rotation.x = -90*Math.PI/180;
+        floor.receiveShadow = true;
+        scene.add(floor);
+
+        var helper = new THREE.AxisHelper(500);
+        scene.add(helper);
+    }
+
+    function initControls() {
+        clock = new THREE.Clock();
+
+        controls = new THREE.WHDFirstPersonControls(camera);
+        controls.lookSpeed = 0.5;
+        controls.movementSpeed = 500;
+        controls.noFly = false;
+        controls.lookVertical = true;
+        controls.constrainVertical = true;
+        controls.verticalMin = 1.5;
+        controls.verticalMax = 2.0;
+
+        controls.lon = 270;
+        controls.lat = 90;
+        camera.position.set( 0, 0, 300 );
+    }
+
+</script>
+</body>
+</html>

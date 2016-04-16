@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Basic Three.js App</title>
+    <style>
+        html, body { margin: 0; padding: 0; overflow: hidden; }
+    </style>
+</head>
+<body>
+<script src="../lib/three.min.js"></script>
+<script src="../lib/WHDFirstPersonControls.js"></script>
+<script src="../lib/Cloth.js"></script>
+<script src="../lib/Dusk.js"></script>
+
+<script type="x-shader/x-vertex" id="vertexShaderDepth">
+
+			varying vec2 vUV;
+
+			void main() {
+
+				vUV = 0.75 * uv;
+
+				vec4 mvPosition = modelViewMatrix * vec4( position, 1.0 );
+
+				gl_Position = projectionMatrix * mvPosition;
+
+			}
+
+</script>
+
+<script type="x-shader/x-fragment" id="fragmentShaderDepth">
+
+			uniform sampler2D texture;
+			varying vec2 vUV;
+
+			vec4 pack_depth( const in float depth ) {
+
+				const vec4 bit_shift = vec4( 256.0 * 256.0 * 256.0, 256.0 * 256.0, 256.0, 1.0 );
+				const vec4 bit_mask  = vec4( 0.0, 1.0 / 256.0, 1.0 / 256.0, 1.0 / 256.0 );
+				vec4 res = fract( depth * bit_shift );
+				res -= res.xxyz * bit_mask;
+				return res;
+
+			}
+
+			void main() {
+
+				vec4 pixel = texture2D( texture, vUV );
+
+				if ( pixel.a < 0.5 ) discard;
+
+				gl_FragData[ 0 ] = pack_depth( gl_FragCoord.z );
+
+			}
+</script>
+
+<script>
+
+    var clocks, controls;
+    var loader = new THREE.TextureLoader();
+
+    var scene = new THREE.Scene();
+    scene.add(new THREE.AmbientLight({color: 0x000020}));
+
+
+    var aspect = window.innerWidth / window.innerHeight;
+
+    var camera = new THREE.PerspectiveCamera(75, aspect, 0.1, 2000);
+    camera.position.z = 200;
+    camera.position.y = 30;
+
+    var renderer = new THREE.WebGLRenderer();
+    renderer.antialias = true;        //抗锯齿
+    renderer.shadowMap.enabled = true;
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    var floor = createFloor();
+    scene.add(floor);
+
+    initControls();
+
+    //initDemo();
+    //initCloth();
+    initDirLight();
+    //initSpotLight();
+    //initCone();
+
+    var leaf;
+    var iny = 0;
+
+    initLeaf();
+
+    var render = function () {
+        controls.update( clock.getDelta() );
+        renderer.render( scene, camera );
+
+        var temp = Date.now()/1000;
+        leaf.position.y = Math.sin(temp)*50+70;
+        leaf.position.x = Math.cos(temp)*50;
+
+        requestAnimationFrame( render );
+    };
+
+    render();
+
+    function initLeaf() {
+        var map = loader.load( '../images/leaf.png' );
+        map.wrapS = map.wrapT = THREE.RepeatWrapping;
+        map.anisotropy = 16;
+
+        leaf = WHDCreateLeaf(map);
+        leaf.position.y = 50;
+        scene.add(leaf);
+
+        var uniforms = { texture:  { type: "t", value: map } };
+        var vertexShader = document.getElementById( 'vertexShaderDepth' ).textContent;
+        var fragmentShader = document.getElementById( 'fragmentShaderDepth' ).textContent;
+
+        leaf.customDepthMaterial = new THREE.ShaderMaterial( {
+            uniforms: uniforms,
+            vertexShader: vertexShader,
+            fragmentShader: fragmentShader,
+            side: THREE.DoubleSide
+        } );
+    }
+
+    function initCloth() {
+        var clothTexture = loader.load( '../images/leaf.png' );  //circuit_pattern
+        clothTexture.wrapS = clothTexture.wrapT = THREE.RepeatWrapping;
+        clothTexture.anisotropy = 16;
+
+        var clothMaterial = new THREE.MeshPhongMaterial( {
+            specular: 0x030303,
+            map: clothTexture,
+            side: THREE.DoubleSide,
+            alphaTest: 0.5
+        } );
+
+        var clothGeometry = new THREE.ParametricGeometry( clothFunction, cloth.w, cloth.h );
+        clothGeometry.dynamic = true;
+
+        var uniforms = { texture:  { type: "t", value: clothTexture } };
+        var vertexShader = document.getElementById( 'vertexShaderDepth' ).textContent;
+        var fragmentShader = document.getElementById( 'fragmentShaderDepth' ).textContent;
+
+        var object = new THREE.Mesh( clothGeometry, clothMaterial );
+        object.position.set( 0, 50, 0 );
+        object.rotation.x = Math.PI/2;
+        object.castShadow = true;
+        scene.add( object );
+
+        object.customDepthMaterial = new THREE.ShaderMaterial( {
+            uniforms: uniforms,
+            vertexShader: vertexShader,
+            fragmentShader: fragmentShader,
+            side: THREE.DoubleSide
+        } );
+    }
+
+    function initDemo() {
+        var g = new THREE.BoxGeometry(100, 100, 100);
+
+        var map = loader.load( '../images/leaf.png' );
+
+        var m = new THREE.MeshLambertMaterial( {map:map} );
+        m.side = THREE.DoubleSide;
+
+        var me = new THREE.Mesh(g, m);
+        me.castShadow = true;
+        me.position.y = 100;
+        scene.add(me);
+
+        controls.combineFunction = function () {
+            var map2 = loader.load( '../images/disc.png' );
+            me.material.map = map2;
+            me.material.map.needsUpdate = true;
+
+        }
+    }
+
+    function initDirLight() {
+        var light = new THREE.DirectionalLight(0xcdaebf, 1);
+        light.castShadow = true;
+        light.shadowDarkness = 1;
+        light.shadowMapWidth = 2048;
+        light.shadowMapHeight = 2048;
+        light.position.set(1000, 500, 1000);
+        light.shadowCameraFar = 2500;
+        light.shadowCameraLeft = -1000;
+        light.shadowCameraRight = 1000;
+        light.shadowCameraTop = 1000;
+        light.shadowCameraBottom = -1000;
+        scene.add(light);
+    }
+
+    function initSpotLight() {
+        var spotLight = new THREE.SpotLight( 0xffffff );
+        spotLight.position.set( 0, 500, 0 );
+
+        spotLight.castShadow = true;
+
+        spotLight.shadowMapWidth = 1024;
+        spotLight.shadowMapHeight = 1024;
+
+        spotLight.shadowCameraNear = 10;
+        spotLight.shadowCameraFar = 4000;
+        spotLight.shadowCameraFov = 30;
+
+        scene.add( spotLight );
+    }
+
+    function initCone() {
+        var cone = new THREE.CylinderGeometry(100, 300, 1000, 100, 100, true);
+        var material = new THREE.MeshLambertMaterial( {color: 0x0000cc} );
+        material.opacity = 0.5;
+        material.transparent = true;
+
+        scene.add(new THREE.Mesh(cone, material));
+    }
+    
+    function createFloor() {
+        var geometry = new THREE.PlaneGeometry(1000, 1000, 20, 20);
+
+        var material = new THREE.MeshPhongMaterial();
+        material.color.setHex(0xcdcdcd);
+
+        var floor = new THREE.Mesh(geometry, material);
+        floor.rotation.x = -90*Math.PI/180;
+        floor.receiveShadow = true;
+        floor.receiveShadow = true;
+        floor.castShadow = true;
+        return floor;
+    }
+
+    function initControls() {
+        clock = new THREE.Clock();
+
+        controls = new THREE.WHDFirstPersonControls(camera);
+        controls.lookSpeed = 0.5;
+        controls.movementSpeed = 500;
+        controls.noFly = false;
+        controls.lookVertical = true;
+        controls.constrainVertical = true;
+        controls.verticalMin = 1.5;
+        controls.verticalMax = 2.0;
+        controls.lon = 270;
+        controls.lat = 90;
+    }
+
+</script>
+</body>
+</html>

@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Basic Three.js App</title>
+    <style>
+        html, body { margin: 0; padding: 0; overflow: hidden; }
+    </style>
+</head>
+<body>
+<script src="../lib/three.min.js"></script>
+<script src="../lib/WHDFirstPersonControls.js"></script>
+<script src="../lib/Cloth.js"></script>
+<script src="../lib/Dusk.js"></script>
+
+<script>
+
+    var clocks, controls;
+    var loader = new THREE.TextureLoader();
+
+    var scene = new THREE.Scene();
+    scene.add(new THREE.AmbientLight({color: 0x000020}));
+
+
+    var aspect = window.innerWidth / window.innerHeight;
+
+    var camera = new THREE.PerspectiveCamera(75, aspect, 0.1, 2000);
+    camera.position.z = 200;
+    camera.position.y = 30;
+
+    var renderer = new THREE.WebGLRenderer();
+    renderer.antialias = true;        //抗锯齿
+    renderer.shadowMap.enabled = true;
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    var floor = createFloor();
+    scene.add(floor);
+
+    initControls();
+
+    var demo = initDemo();
+    var demoPoint = initDemoPoint();
+    createFloor();
+    initDirLight();
+
+    var flag = 0;
+
+    controls.clickFunction = function () {
+        flag = (flag == 1 ? 0 : 1);
+    }
+
+    var render = function () {
+        var delta = clock.getDelta();
+        controls.update( delta );
+        renderer.render( scene, camera );
+
+        dropDemoPoint( demoPoint );
+        disppearDemo( demo );
+
+        requestAnimationFrame( render );
+    };
+
+    render();
+
+    function disppearDemo( demo ) {
+        demo.material.opacity -= 0.01;
+    }
+
+    function dropDemoPoint( demoPoint ){
+        var vertices = demoPoint.geometry.vertices;
+        for ( var i = 0; i < vertices.length; i++ ) {
+            var p = vertices[i];
+            if ( p.y > -49 ) {
+                p.y -= Math.random()*1;
+                p.x += Math.random()*1;
+            } else {
+                p.y = -49;
+            }
+        }
+        demoPoint.geometry.verticesNeedUpdate = true;
+    }
+
+    function initDemoPoint(){
+        var ori = new THREE.SphereGeometry(50, 50, 50);
+        var geometry = new THREE.Geometry();
+
+        var vertices = ori.vertices;
+        for ( var i = 0; i < vertices.length; i++ ) {
+            geometry.vertices[i] = vertices[i].clone();
+        }
+
+        var mesh = new THREE.Points( geometry, new THREE.PointsMaterial( { size: 1, color: 0xff0000 } ) );
+        mesh.position.x = 100;
+        mesh.position.y = 100;
+        mesh.position.z = 100;
+        mesh.dynamic = true;
+
+        scene.add(mesh);
+        return mesh;
+    }
+
+    function initDemo() {
+        var g = new THREE.BoxGeometry(100, 100, 100, 100, 100, 100);
+
+        var map = loader.load( '../images/leaf.png' );
+
+        var m = new THREE.MeshLambertMaterial( {map:map} );
+        m.side = THREE.DoubleSide;
+        m.wireframe = true;
+        m.opacity = 0.5;
+        m.transparent = true;
+
+        var me = new THREE.Mesh(g, m);
+        me.castShadow = true;
+        me.position.y = 100;
+        me.position.x = -100;
+        me.position.z = -100;
+        scene.add(me);
+
+        return me;
+
+//        controls.combineFunction = function () {
+//            var map2 = loader.load( '../images/disc.png' );
+//            me.material.map = map2;
+//            me.material.map.needsUpdate = true;
+//        }
+    }
+
+    function initDirLight() {
+        var light = new THREE.DirectionalLight(0xcdaebf, 1);
+        light.castShadow = true;
+        light.shadowDarkness = 1;
+        light.shadowMapWidth = 2048;
+        light.shadowMapHeight = 2048;
+        light.position.set(1000, 500, 1000);
+        light.shadowCameraFar = 2500;
+        light.shadowCameraLeft = -1000;
+        light.shadowCameraRight = 1000;
+        light.shadowCameraTop = 1000;
+        light.shadowCameraBottom = -1000;
+        scene.add(light);
+    }
+    
+    function createFloor() {
+        var geometry = new THREE.PlaneGeometry(1000, 1000, 20, 20);
+
+        var material = new THREE.MeshPhongMaterial();
+        material.color.setHex(0xcdcdcd);
+
+        var floor = new THREE.Mesh(geometry, material);
+        floor.rotation.x = -90*Math.PI/180;
+        floor.receiveShadow = true;
+        floor.receiveShadow = true;
+        floor.castShadow = true;
+        return floor;
+    }
+
+    function initControls() {
+        clock = new THREE.Clock();
+
+        controls = new THREE.WHDFirstPersonControls(camera);
+        controls.lookSpeed = 0.5;
+        controls.movementSpeed = 500;
+        controls.noFly = false;
+        controls.lookVertical = true;
+        controls.constrainVertical = true;
+        controls.verticalMin = 1.5;
+        controls.verticalMax = 2.0;
+        controls.lon = 270;
+        controls.lat = 90;
+    }
+
+</script>
+</body>
+</html>
