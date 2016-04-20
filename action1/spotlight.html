@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Song MV</title>
+    <style>
+        html, body { margin: 0; padding: 0; overflow: hidden; }
+    </style>
+</head>
+<body>
+<script src="../lib/three.js"></script>
+<script src="../lib/WHDFirstPersonControls.js"></script>
+<script src="../lib/Enum.js"></script>
+<script src="../lib/WHDSpotLight.js"></script>
+
+<script type="x-shader/x-vertex" id="vertexShader">
+
+varying vec2 vUv;
+void main() {
+   vUv = uv;
+   gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0);
+}
+
+</script>
+
+<script type="x-shader/x-fragment" id="fragmentShader">
+
+varying vec2 vUv;
+uniform vec3 myColor;
+
+void main() {
+    if(vUv[1] < 0.05) discard;
+    gl_FragColor = vec4(vUv[1]+myColor, 0.5*(1.0-vUv[1]));
+}
+
+
+</script>
+
+<script>
+
+    var clock, controls, box;
+
+    var scene = new THREE.Scene();
+    //scene.fog = new THREE.Fog(0x434343, 1, 1000);
+    scene.add( new THREE.AmbientLight( 0x0000c0, 0.2 ) );
+
+    var aspect = window.innerWidth / window.innerHeight;
+    var camera = new THREE.PerspectiveCamera(75, aspect, 0.1, 200000);
+
+    var renderer = new THREE.WebGLRenderer(  { antialias: true, alpha: true }  );
+    renderer.setClearColor( 0x000000 );
+    renderer.shadowMap.enabled = true;
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    initControls();
+
+    var degree = 45;
+    var radians = Math.PI/9;
+    var lightColor = 0x0000ff;
+    var lightLength = 200;
+
+    createFloor();
+    var box = initBox(scene);
+    box.position.set( 100, 10, 100);
+
+//    var spotLight = initSpotLight();
+//    initDirectionLight();
+//    var cone = initCone();
+
+    var spotLight1 = new THREE.WHDSpotLight( scene, Math.PI/10, 800, 500, 0xccff00, 0.7 );
+    spotLight1.setPosition( -100, 200, -100);
+
+    var spotLight2 = new THREE.WHDSpotLight( scene, Math.PI/10, 800, 500, 0x33aaff, 0.2 );
+    spotLight2.setPosition( 100, 200, -100);
+
+
+    var render = function () {
+        var temp = clock.getDelta();
+        controls.update( temp );
+        renderer.render( scene, camera );
+
+        var temp2 = Date.now()/500;
+        spotLight1.update( new THREE.Vector3( 30*Math.cos( temp2 ), 10, 30*Math.sin( temp2 )) );
+        spotLight2.update( new THREE.Vector3( 30*Math.cos( temp2 ), 10, 30*Math.sin( temp2 )) );
+
+        box.position.x = 30*Math.cos( temp2 );
+        box.position.z = 30*Math.sin( temp2 );
+//        spotLight.target.position.x = 30*Math.cos( temp2 );
+//        spotLight.target.position.z = 30*Math.sin( temp2 );
+//
+//        updateCone();
+
+        requestAnimationFrame( render );
+    };
+
+    render();
+
+    function updateCone() {
+        var p1 = spotLight.target.position;
+        var p2 = spotLight.position;
+        var dir = new THREE.Vector3( p1.x-p2.x, p1.y-p2.y, p1.z-p2.z );
+
+        cone.position.set( 0, 0, 0 );
+        cone.lookAt( dir );
+        console.log(dir);
+
+        cone.position.copy( p2 );
+    }
+
+    function initSpotLight() {
+        //颜色 强度 距离 角度rad 中心垂线到边的角度 exponent, decay
+        var spotLight = new THREE.SpotLight(lightColor, 1, 1000, radians );
+        spotLight.position.set( 0, 200, 0 );
+
+        spotLight.castShadow = true;
+
+        spotLight.shadow.mapSize.width = 1024;
+        spotLight.shadow.mapSize.height = 1024;
+
+        spotLight.shadow.camera.near = 50;
+        spotLight.shadow.camera.far = lightLength*2;
+        //114.59155902616465   0.00872665  灯光角度两倍
+        spotLight.shadow.camera.fov = 114.59155902616465*radians;
+        //spotLight.target = box;
+
+        var cameraHelper = new THREE.CameraHelper(spotLight.shadow.camera);
+        scene.add(cameraHelper);
+
+        scene.add(spotLight);
+        scene.add(spotLight.target);
+
+        return spotLight;
+    }
+    
+    function initCone() {
+        //(radiusTop, radiusBottom, height, radiusSegments, heightSegments, openEnded, thetaStart, thetaLength)
+        var cylinder = new THREE.CylinderGeometry(lightLength*Math.tan(radians), 0, lightLength, 100, 100, true);
+        cylinder.translate( 0, lightLength/2, 0);
+        cylinder.rotateX(Math.PI/2);
+
+//        varying vec2 vUv;
+//        void main() {
+//            vUv = uv;
+//            gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0);
+//        }
+        var vertextShaderText = "varying vec2 vUv;"+
+                        "void main() {"+
+                        "vUv = uv;"+
+                        "gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0);"+
+                        "}";
+
+        var mat = new THREE.ShaderMaterial({
+            uniforms: {
+                myColor: { type: "c", value: new THREE.Color( 0x0000ff ) }
+            },
+            vertexShader: vertextShaderText,
+            fragmentShader: document.
+            getElementById('fragmentShader').text
+        });
+        mat.transparent = true;
+        mat.depthWrite = false;
+        mat.depthTest = true;
+        mat.side = THREE.DoubleSide;
+
+        var m2 = new THREE.MeshNormalMaterial();
+
+        var mesh = new THREE.Mesh( cylinder, mat );
+        scene.add( mesh );
+
+        var cir = new THREE.CircleGeometry( 4, 32 );
+        var m3 = new THREE.MeshBasicMaterial( {color: 0x4444ff} );
+        m3.side = THREE.DoubleSide;
+        var cirMesh = new THREE.Mesh( cir, m3 );
+        //cirMesh.translate( 0, 0, 0);
+        //cirMesh.rotateX(Math.PI/2);
+        cirMesh.translateZ(10);
+        mesh.add(cirMesh);
+
+        return mesh;
+    }
+    
+    function initDirectionLight() {
+        var directionalLight = new THREE.DirectionalLight( 0x00ff00, 1 );
+        directionalLight.position.set( -500, 500, -500 );
+
+        directionalLight.castShadow = true;
+
+        directionalLight.shadow.camera.near = 50;
+        directionalLight.shadow.camera.far = 2000;
+
+        directionalLight.shadow.camera.left = -800;
+        directionalLight.shadow.camera.right = 800;
+        directionalLight.shadow.camera.bottom = -800;
+        directionalLight.shadow.camera.top = 800;
+
+        directionalLight.shadow.mapSize.width = 1024;
+        directionalLight.shadow.mapSize.height = 1024;
+
+        scene.add( directionalLight );
+
+//        var cameraHelper = new THREE.CameraHelper(directionalLight.shadow.camera);
+//        scene.add(cameraHelper);
+    }
+
+    /*********************************************************************/
+
+    function createFloor() {
+        var l = 100*Math.tan(radians)*2;
+        var geometry = new THREE.PlaneGeometry(1000, 1000, 20, 20);
+
+        var material = new THREE.MeshPhongMaterial();
+        material.color.setHex(0x969696);
+        material.side = THREE.DoubleSide;
+
+        var floor = new THREE.Mesh(geometry, material);
+        floor.rotation.x = -90*Math.PI/180;
+        floor.receiveShadow = true;
+        floor.side = THREE.DoubleSide;
+        scene.add(floor);
+
+        var helper = new THREE.AxisHelper(500);
+        scene.add(helper);
+    }
+
+    function initControls() {
+        clock = new THREE.Clock();
+
+        controls = new THREE.WHDFirstPersonControls(camera);
+        controls.lookSpeed = 0.5;
+        controls.movementSpeed = 200;
+        controls.noFly = false;
+        controls.lookVertical = true;
+        controls.constrainVertical = true;
+        controls.verticalMin = 1.5;
+        controls.verticalMax = 2.0;
+
+        controls.lon = 270;
+        controls.lat = 90;
+        camera.position.set( 0, 50, 300 );
+    }
+
+</script>
+</body>
+</html>
